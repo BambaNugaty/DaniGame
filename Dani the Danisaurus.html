@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>DANI THE DANISAURUS — King of Kfar Saba</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #f3e7c9;
+    --bg: #0a0510;
+    --blood: #c11515;
+    --neon: #7cff5a;
+    --accent: #ff8a1f;
+    --purple: #4a1a6e;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: #000; color: var(--ink);
+    font-family: 'VT323', monospace;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #root, #stage {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: #000;
+  }
+  /* the playfield: a fixed 4:3 canvas centered, letterboxed */
+  #playfield {
+    position: relative;
+    width: min(100vw, calc(100vh * 1.6));
+    height: min(100vh, calc(100vw / 1.6));
+    background: #000;
+    overflow: hidden;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+  canvas.view {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 78%;
+    image-rendering: pixelated;
+    background: #000;
+    cursor: crosshair;
+  }
+  canvas.hud {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    width: 100%;
+    height: 22%;
+    image-rendering: pixelated;
+  }
+  /* crosshair */
+  .crosshair {
+    position: absolute;
+    left: 50%; top: 39%;
+    transform: translate(-50%, -50%);
+    width: 18px; height: 18px;
+    pointer-events: none;
+    mix-blend-mode: screen;
+  }
+  .crosshair::before, .crosshair::after {
+    content: ""; position: absolute; background: var(--neon);
+  }
+  .crosshair::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
+  .crosshair::after  { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
+
+  /* TITLE SCREEN */
+  #title {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse at 50% 70%, #2a0a3a 0%, #0a0510 60%, #000 100%);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 50;
+    padding: 4%;
+    text-align: center;
+    overflow: hidden;
+  }
+  #title.hidden { display: none; }
+  #title .scanlines {
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,0.35) 0 2px, transparent 2px 4px);
+    pointer-events: none;
+    mix-blend-mode: multiply;
+  }
+  #title h1 {
+    font-family: 'Press Start 2P', monospace;
+    color: var(--accent);
+    font-size: clamp(20px, 4.4vw, 64px);
+    letter-spacing: 2px;
+    margin: 0;
+    text-shadow:
+      4px 4px 0 #7a1a00,
+      8px 8px 0 #2a0510,
+      0 0 30px rgba(255,138,31,0.6);
+    line-height: 1.15;
+  }
+  #title h1 .king {
+    display: block;
+    font-size: 0.45em;
+    color: var(--ink);
+    text-shadow: 2px 2px 0 #000;
+    margin-top: 0.6em;
+    letter-spacing: 4px;
+  }
+  #title h1 .city {
+    display: block;
+    font-size: 0.55em;
+    color: var(--neon);
+    text-shadow: 3px 3px 0 #003a00, 0 0 20px rgba(124,255,90,0.5);
+    margin-top: 0.4em;
+  }
+  #title .danvas {
+    margin: 5vh 0 3vh;
+    width: clamp(140px, 22vw, 320px);
+    aspect-ratio: 1/1;
+    image-rendering: pixelated;
+    filter: drop-shadow(8px 8px 0 #000);
+  }
+  #title .start {
+    font-family: 'Press Start 2P', monospace;
+    background: var(--neon); color: #001a00;
+    border: 0; padding: 18px 32px;
+    font-size: clamp(12px, 1.6vw, 22px);
+    cursor: pointer;
+    box-shadow: 0 8px 0 #003a00, 0 0 30px rgba(124,255,90,0.5);
+    letter-spacing: 2px;
+    transition: transform 0.08s, box-shadow 0.08s;
+  }
+  #title .start:hover { transform: translateY(2px); box-shadow: 0 6px 0 #003a00, 0 0 40px rgba(124,255,90,0.8); }
+  #title .start:active { transform: translateY(8px); box-shadow: 0 0 0 #003a00; }
+  #title .controls-help {
+    margin-top: 5vh;
+    color: var(--ink);
+    font-size: clamp(14px, 1.5vw, 22px);
+    line-height: 1.4;
+    opacity: 0.85;
+  }
+  #title .controls-help kbd {
+    background: #1a0a2a; padding: 2px 8px; border: 2px solid var(--ink);
+    margin: 0 2px; color: var(--neon);
+    font-family: 'VT323', monospace;
+  }
+  #title .blink { animation: blink 1s steps(2) infinite; }
+  @keyframes blink { to { opacity: 0; } }
+
+  /* DEATH / VICTORY overlays */
+  .overlay {
+    position: absolute; inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 40;
+    text-align: center;
+    background: rgba(20, 0, 0, 0.85);
+  }
+  .overlay.show { display: flex; }
+  .overlay h2 {
+    font-family: 'Press Start 2P', monospace;
+    font-size: clamp(28px, 5vw, 72px);
+    color: var(--blood);
+    text-shadow: 4px 4px 0 #000;
+    margin: 0;
+  }
+  #victory.overlay { background: rgba(0, 30, 0, 0.85); }
+  #victory h2 { color: var(--neon); }
+  .overlay button {
+    margin-top: 30px;
+    font-family: 'Press Start 2P', monospace;
+    background: var(--ink); color: #000;
+    border: 0; padding: 14px 24px; font-size: 16px;
+    cursor: pointer;
+    box-shadow: 0 6px 0 #555;
+  }
+
+  /* damage flash */
+  #damage-flash {
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at center, transparent 30%, rgba(193, 21, 21, 0.7) 100%);
+    pointer-events: none;
+    opacity: 0;
+    z-index: 20;
+    transition: opacity 0.15s;
+  }
+  /* muzzle flash overlay */
+  #muzzle {
+    position: absolute; inset: 0 0 22% 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at 50% 80%, rgba(255, 220, 80, 0.7) 0%, transparent 35%);
+    opacity: 0;
+    z-index: 10;
+    mix-blend-mode: screen;
+  }
+  #pause-msg {
+    position: absolute; left: 50%; top: 38%;
+    transform: translate(-50%, -50%);
+    font-family: 'Press Start 2P', monospace;
+    color: var(--ink);
+    font-size: clamp(14px, 1.8vw, 24px);
+    text-align: center;
+    text-shadow: 3px 3px 0 #000;
+    pointer-events: none;
+    z-index: 30;
+    display: none;
+    line-height: 1.6;
+  }
+  #pause-msg.show { display: block; }
+  #volume-toast {
+    position: absolute; left: 50%; top: 24px;
+    transform: translateX(-50%);
+    font-family: 'Press Start 2P', monospace;
+    color: var(--accent);
+    background: rgba(0, 0, 0, 0.78);
+    border: 2px solid var(--ink);
+    padding: 10px 16px;
+    font-size: 12px;
+    letter-spacing: 1px;
+    display: flex; align-items: center; gap: 10px;
+    opacity: 0;
+    transition: opacity 0.18s ease-out;
+    pointer-events: none;
+    z-index: 20;
+    text-shadow: 2px 2px 0 #000;
+  }
+  #volume-toast.show { opacity: 1; }
+  #volume-toast .bars {
+    display: flex; gap: 3px;
+  }
+  #volume-toast .bar {
+    width: 8px; height: 14px;
+    background: var(--ink);
+    opacity: 0.25;
+  }
+  #volume-toast .bar.on { opacity: 1; background: var(--neon); }
+  #volume-toast.muted { color: var(--blood); }
+  #volume-toast.muted .bar.on { background: var(--blood); }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="playfield">
+    <canvas class="view" id="view" width="320" height="200"></canvas>
+    <canvas class="hud" id="hud" width="320" height="56"></canvas>
+    <div class="crosshair" id="crosshair"></div>
+    <div id="muzzle"></div>
+    <div id="damage-flash"></div>
+    <div id="pause-msg">CLICK TO LOCK MOUSE<br/><span style="font-size:0.7em;opacity:0.7">WASD move · MOUSE aim · CLICK fire · ESC pause · +/− volume · M mute</span></div>
+    <div id="volume-toast"><span class="label">VOL</span><div class="bars"></div></div>
+
+    <div id="title">
+      <div class="scanlines"></div>
+      <h1>
+        DANI<br/>
+        THE DANISAURUS
+        <span class="king">— KING OF —</span>
+        <span class="city">KFAR SABA</span>
+      </h1>
+      <canvas class="danvas" id="title-dani" width="64" height="64"></canvas>
+      <button class="start" id="start-btn">PRESS START</button>
+      <div class="controls-help">
+        <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp;·&nbsp; <kbd>MOUSE</kbd> look &nbsp;·&nbsp; <kbd>CLICK</kbd> fire</div>
+        <div style="margin-top:12px" class="blink">▼ CAVEMEN INVADE THE SUBURBS ▼</div>
+      </div>
+    </div>
+
+    <div class="overlay" id="death">
+      <h2>YOU DIED</h2>
+      <div style="font-size: 28px; color: var(--ink); margin-top: 20px;">The cavemen took the city.</div>
+      <button id="death-restart">RETRY</button>
+    </div>
+    <div class="overlay" id="victory">
+      <h2>KFAR SABA<br/>SAVED</h2>
+      <div style="font-size: 28px; color: var(--ink); margin-top: 20px;">Long live King Dani.</div>
+      <button id="victory-restart">PLAY AGAIN</button>
+    </div>
+  </div>
+</div>
+
+<!-- React + Babel for the tweaks panel only -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<!-- Game scripts (vanilla JS, not babel) -->
+<script src="sprites.js"></script>
+<script src="audio.js?v=3"></script>
+<script src="level.js"></script>
+<script src="raycaster.js?v=2"></script>
+<script src="hud.js"></script>
+<script src="game.js?v=3"></script>
+
+<!-- Tweaks panel (React) -->
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="tweaks.jsx?v=2"></script>
+</body>
+</html>
