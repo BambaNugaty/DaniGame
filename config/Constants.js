@@ -10,6 +10,9 @@
       START_HEALTH: 100,
       START_MAX_HEALTH: 100,
       START_AMMO: 25,
+      MAX_AMMO: 75,                // hard cap so ammo pickups stop being free
+                                   // — matters now that the level only ends
+                                   // after the boss + finishing-touch fight
       MOVE_SPEED: 3.0,
       TURN_SPEED: 2.4,             // rad/s for arrow-key turn
       MOUSE_SENSITIVITY: 0.0025,   // rad per pixel of mouse delta

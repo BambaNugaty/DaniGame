@@ -50,8 +50,11 @@
     shopOpen: false,
     transitioning: false,
     cinematic: false,                 // Selfie / cutscene takes over input + camera
+    bossDefeated: false,              // Once true, no more wave spawns this level — clear remaining and exit
     weapon: 'blaster',  // 'blaster' | 'shotgun'
   };
+  // Exposed for systems and dev probes. Same pattern as __GAME_PLAYER.
+  window.__GAME_STATE = state;
 
   const tweaks = { fov: 1.05, maxDepth: 22, pixelation: 2, enemySpeed: 1.3, enemyCount: 8 };
   window.GAME_TWEAKS = tweaks;
@@ -116,11 +119,25 @@
 
   let faces, cavemanSprites, friendSprite, bossSprite, colaCanSprite;
   let wallTex, projectileSprite, healthSprite, ammoSprite, coinSprite, weapon, weaponShotgun, weaponDropSprite;
+  let exitMarkerSprite;
   let rc = null, hud = null;
 
   startBtn.addEventListener('click', startGame);
   document.getElementById('death-restart').addEventListener('click', restart);
   document.getElementById('victory-restart').addEventListener('click', restart);
+  // Pause-menu actions. Both buttons live inside #pause-msg; clicks elsewhere
+  // on the overlay fall through (pause-msg has pointer-events:none) so the
+  // existing "click view to acquire pointer-lock" still resumes the game.
+  const resumeBtn = document.getElementById('resume-btn');
+  if (resumeBtn) resumeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (state.started && !state.dead && !state.won) view.requestPointerLock();
+  });
+  const quitBtn = document.getElementById('quit-btn');
+  if (quitBtn) quitBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    quitToLobby();
+  });
 
   // ---- VOLUME TOAST ----
   const volumeToast = document.getElementById('volume-toast');
@@ -394,6 +411,7 @@
     weapon = SPRITES.makeWeapon();
     weaponShotgun = SPRITES.makeWeaponShotgun();
     weaponDropSprite = SPRITES.makeWeaponDrop();
+    exitMarkerSprite = makeExitMarkerSprite();
 
     const td = SPRITES.makeTitleDani();
     const tCtx = titleDani.getContext('2d');
@@ -423,6 +441,54 @@
     return enemyCapForLevel(idx); // start at the cap
   }
 
+  // Procedural exit beacon: a tall green light pillar with chevrons and an
+  // EXIT label. Only rendered after the boss has been defeated, so the player
+  // has a clear visual target for "where to go next".
+  function makeExitMarkerSprite() {
+    const W = 64, H = 96;
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+
+    // Vertical green halo (transparent at the floor, solid bright at the top).
+    const grad = ctx.createLinearGradient(0, H, 0, 0);
+    grad.addColorStop(0, 'rgba(124, 255, 90, 0)');
+    grad.addColorStop(0.35, 'rgba(124, 255, 90, 0.55)');
+    grad.addColorStop(1, 'rgba(207, 255, 176, 0.95)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(18, 0, 28, H);
+
+    // Bright white core down the middle.
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.fillRect(28, 6, 8, H - 12);
+
+    // Hard outline so it reads against light backgrounds too.
+    ctx.fillStyle = '#7cff5a';
+    ctx.fillRect(18, 0, 2, H);
+    ctx.fillRect(44, 0, 2, H);
+
+    // Stack of chevrons pointing down.
+    ctx.fillStyle = '#cfffb0';
+    for (let i = 0; i < 4; i++) {
+      const y = 28 + i * 16;
+      ctx.fillRect(28, y, 8, 2);
+      ctx.fillRect(30, y + 2, 4, 2);
+      ctx.fillRect(31, y + 4, 2, 2);
+    }
+
+    // EXIT label at the top so it's readable from a distance.
+    ctx.fillStyle = '#1a0a2a';
+    ctx.fillRect(14, 4, 36, 14);
+    ctx.fillStyle = '#cfffb0';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('EXIT', 32, 11);
+
+    return c;
+  }
+
   function spawnEnemyAtSafeTile(variant, awayFromPlayer, minDist) {
     const t = LEVEL.randomOpenTile(awayFromPlayer ? player : null, minDist || 4);
     if (!t) return null;
@@ -432,11 +498,38 @@
     return e;
   }
 
+  // After a boss dies we stop spawning waves and reduce the alive enemies down
+  // to a small finishing-touch fight (default 2). Extras vanish silently — no
+  // coins/juice — so the cinematic isn't drowned in death events. If there
+  // aren't enough alive, we top up.
+  function trimToFinalEnemies(target) {
+    const alive = enemies.filter(e => e.state !== 'dead' && !e.removed);
+    if (alive.length > target) {
+      // Keep the closest `target` to the player, drop the rest.
+      alive.sort((a, b) => {
+        const da = (a.x - player.x) * (a.x - player.x) + (a.y - player.y) * (a.y - player.y);
+        const db = (b.x - player.x) * (b.x - player.x) + (b.y - player.y) * (b.y - player.y);
+        return da - db;
+      });
+      for (let i = target; i < alive.length; i++) alive[i].removed = true;
+    } else if (alive.length < target) {
+      const need = target - alive.length;
+      for (let i = 0; i < need; i++) {
+        spawnEnemyAtSafeTile(Math.floor(Math.random() * CONST.ENEMY.VARIANT_COUNT), true, 6);
+      }
+    }
+    // Recount totalEnemies so the HUD's kills/total readout reflects the new
+    // ceiling: kills so far + the finishing-touch enemies + the (already-dead) boss.
+    const remaining = enemies.filter(e => e.state !== 'dead' && !e.removed).length;
+    state.totalEnemies = state.kills + remaining;
+  }
+
   function loadLevel(idx, fullReset) {
     LEVEL.load(idx);
     state.levelIndex = idx;
     state.transitioning = false;
     state.cinematic = false;
+    state.bossDefeated = false;
     if (window.JUICE) JUICE.reset();
     if (window.SELFIE) SELFIE.cancel();
 
@@ -553,6 +646,34 @@
     loadLevel(0, true);
     state.started = true;
     setTimeout(() => view.requestPointerLock(), 100);
+  }
+
+  // Quit-to-lobby: tear down the run and return to the title screen so a
+  // fresh "PRESS START" can begin a new game cleanly. Mirrors restart()'s
+  // state reset but ends with the title visible instead of a new run.
+  function quitToLobby() {
+    if (mouseLocked) document.exitPointerLock();
+    pauseMsg.classList.remove('show');
+    deathOverlay.classList.remove('show');
+    victoryOverlay.classList.remove('show');
+    const shopEl = document.getElementById('shop');
+    if (shopEl) shopEl.style.display = 'none';
+    const friendShopEl = document.getElementById('friend-shop');
+    if (friendShopEl) friendShopEl.style.display = 'none';
+    state.started = false;
+    state.paused = false;
+    state.dead = false;
+    state.won = false;
+    state.shopOpen = false;
+    state.friendShopOpen = false;
+    state.cinematic = false;
+    state.bossDefeated = false;
+    if (window.SELFIE) SELFIE.cancel();
+    if (window.JUICE) JUICE.reset();
+    AUDIO.fadeMusic(0.0, 300);
+    setTimeout(() => AUDIO.stopMusic && AUDIO.stopMusic(), 320);
+    titleEl.classList.remove('hidden');
+    loadLevel(0, true);
   }
 
   function isWall(x, y) { return LEVEL.at(x | 0, y | 0) > 0; }
@@ -860,8 +981,18 @@
             drops.push({ x: boss.x, y: boss.y, kind: 'shotgun' });
             showBanner('SHOTGUN DROPPED', '#ffd33a');
             if (window.EVENTS) EVENTS.emit('boss:killed', { x: boss.x, y: boss.y });
-            // Reschedule next boss arrival (waves continue).
-            bossSpawnAt = performance.now() / 1000 + CONST.BOSS.RESPAWN_DELAY_MIN + Math.random() * CONST.BOSS.RESPAWN_DELAY_RAND;
+            // No more wave spawns this level. Trim survivors to a small
+            // finishing-touch count so the player has a clear path to the
+            // exit instead of an endless top-up loop.
+            state.bossDefeated = true;
+            trimToFinalEnemies(2);
+            // Show the "find the exit" hint after the cinematic ends so it
+            // doesn't compete with the SHOTGUN DROPPED banner / polaroid.
+            setTimeout(() => {
+              if (state.bossDefeated && !state.dead && !state.won) {
+                showBanner('FIND THE EXIT', '#7cff5a');
+              }
+            }, 6500);
             checkLevelComplete();
           }
           projectiles.splice(i, 1);
@@ -985,7 +1116,7 @@
           state.health = Math.min(state.maxHealth || CONST.PLAYER.START_MAX_HEALTH, state.health + P.HEALTH_AMOUNT);
           AUDIO.SFX.pickup();
         } else if (p.kind === 'ammo') {
-          state.ammo += P.AMMO_AMOUNT;
+          state.ammo = Math.min(CONST.PLAYER.MAX_AMMO, state.ammo + P.AMMO_AMOUNT);
           AUDIO.SFX.ammoPickup();
         }
         if (window.EVENTS) EVENTS.emit('pickup:collected', { kind: p.kind, x: p.x, y: p.y });
@@ -1059,17 +1190,21 @@
     const B = CONST.BOSS;
     const WV = CONST.WAVE;
     const now = performance.now() / 1000;
-    // BOSS: spawn at scheduled time if not present and not currently dead
-    if (!boss && now >= bossSpawnAt) {
-      spawnBossAtRandom();
-    }
-    // Boss despawn after death (DESPAWN_AFTER_DEATH s) so it can return later
+    // Boss despawn after death (DESPAWN_AFTER_DEATH s). Always tick — even
+    // post-defeat, the corpse should fade out cleanly.
     if (boss && boss.state === 'dead') {
       boss.deathTimer = (boss.deathTimer || 0) + dt;
       if (boss.deathTimer > B.DESPAWN_AFTER_DEATH) {
         boss = null;
-        // bossSpawnAt was already set when boss died
       }
+    }
+    // Once the boss has been defeated this level, no new spawns of any kind.
+    // The remaining enemies are the finishing-touch fight; the player clears
+    // them and walks to the exit. Without this gate the level was endless.
+    if (state.bossDefeated) return;
+    // BOSS: spawn at scheduled time if not present and not currently dead
+    if (!boss && now >= bossSpawnAt) {
+      spawnBossAtRandom();
     }
     // Boss taunt: every TAUNT_COOLDOWN_MIN..(MIN+RAND) s while alive
     if (boss && boss.state !== 'dead' && boss.seenPlayer) {
@@ -1102,7 +1237,7 @@
       if (dx * dx + dy * dy < CONST.PICKUP.DROP_PICKUP_RADIUS_SQ) {
         if (d.kind === 'shotgun') {
           state.weapon = 'shotgun';
-          state.ammo += 20;
+          state.ammo = Math.min(CONST.PLAYER.MAX_AMMO, state.ammo + 20);
           AUDIO.SFX.pickup();
           showBanner('SHOTGUN ACQUIRED', '#ffd33a');
         }
@@ -1113,6 +1248,11 @@
 
   function updateExits() {
     if (state.transitioning) return;
+    // Exit is locked until the boss has been defeated. This pairs with the
+    // visible beacon (only drawn when bossDefeated) so the flow is:
+    //   spawn → fight → kill boss → finish 2 stragglers → walk into the
+    //   green EXIT pillar that just appeared → next level.
+    if (!state.bossDefeated) return;
     for (const ex of LEVEL.exits) {
       const dx = player.x - ex.x, dy = player.y - ex.y;
       if (dx * dx + dy * dy < CONST.PICKUP.DROP_PICKUP_RADIUS_SQ) {
@@ -1280,6 +1420,19 @@
         }
         for (const pr of enemyProjectiles) {
           ents.push({ x: pr.x, y: pr.y, canvas: colaCanSprite, frameW: 24, frame: 0, size: 0.5 });
+        }
+        // Exit beacons — only after the boss has been defeated, so the
+        // player has a clear visual target. Pulses gently for attention.
+        if (state.bossDefeated && exitMarkerSprite) {
+          const pulse = 0.92 + Math.sin(performance.now() / 220) * 0.08;
+          for (const ex of LEVEL.exits) {
+            ents.push({
+              x: ex.x, y: ex.y, canvas: exitMarkerSprite,
+              frameW: 64, frame: 0,
+              size: 1.5 * pulse,
+              yOffset: -0.4,
+            });
+          }
         }
       }
       rc.renderSprites(player, ents);
