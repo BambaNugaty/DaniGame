@@ -362,6 +362,79 @@
       ctx.fillRect(2, SZ - 4, SZ - 4, 2);
       textures.garage = c;
     }
+    // ── mall_glass — storefront window with reflective vertical highlights ──
+    {
+      const { c, ctx } = makeCanvas(SZ, SZ);
+      // base teal-blue glass
+      const grad = ctx.createLinearGradient(0, 0, 0, SZ);
+      grad.addColorStop(0, '#3a5a7a');
+      grad.addColorStop(0.5, '#5a8aa8');
+      grad.addColorStop(1, '#2a4a6a');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, SZ, SZ);
+      // vertical highlight reflections
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillRect(10, 4, 2, SZ - 8);
+      ctx.fillRect(40, 4, 1, SZ - 8);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillRect(22, 8, 1, SZ - 16);
+      // dark frame
+      ctx.fillStyle = '#1a2a3a';
+      ctx.fillRect(0, 0, SZ, 3);
+      ctx.fillRect(0, SZ - 3, SZ, 3);
+      ctx.fillRect(0, 0, 3, SZ);
+      ctx.fillRect(SZ - 3, 0, 3, SZ);
+      // crossbar
+      ctx.fillRect(0, SZ / 2 - 1, SZ, 2);
+      textures.mall_glass = c;
+    }
+    // ── station_tile — clean ceramic wall tile, subway feel ──
+    {
+      const { c, ctx } = makeCanvas(SZ, SZ);
+      ctx.fillStyle = '#dcdcd4';
+      ctx.fillRect(0, 0, SZ, SZ);
+      // tile grid: 4 columns × 4 rows of 16×16, with grout
+      ctx.fillStyle = '#7a7a72';
+      for (let y = 0; y <= SZ; y += 16) ctx.fillRect(0, y, SZ, 1);
+      for (let x = 0; x <= SZ; x += 16) ctx.fillRect(x, 0, 1, SZ);
+      // subtle dirt/wear
+      const img = ctx.getImageData(0, 0, SZ, SZ);
+      for (let i = 0; i < img.data.length; i += 4) {
+        if (Math.random() < 0.18) {
+          const n = (Math.random() * 22) | 0;
+          img.data[i] = Math.max(0, img.data[i] - n);
+          img.data[i + 1] = Math.max(0, img.data[i + 1] - n);
+          img.data[i + 2] = Math.max(0, img.data[i + 2] - n);
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+      textures.station_tile = c;
+    }
+    // ── mall_storefront — bright retail facade with abstract logo ──
+    {
+      const { c, ctx } = makeCanvas(SZ, SZ);
+      ctx.fillStyle = '#c11515';
+      ctx.fillRect(0, 0, SZ, SZ);
+      // top awning band
+      ctx.fillStyle = '#ffd33a';
+      ctx.fillRect(0, 0, SZ, 10);
+      ctx.fillStyle = '#1a0a2a';
+      ctx.fillRect(0, 9, SZ, 2);
+      // logo: bold "M" shape
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(14, 22, 6, 28);
+      ctx.fillRect(44, 22, 6, 28);
+      ctx.fillRect(20, 22, 4, 4);
+      ctx.fillRect(40, 22, 4, 4);
+      ctx.fillRect(24, 26, 4, 4);
+      ctx.fillRect(36, 26, 4, 4);
+      ctx.fillRect(28, 30, 4, 4);
+      ctx.fillRect(32, 30, 4, 4);
+      // bottom shadow
+      ctx.fillStyle = '#7a0a0a';
+      ctx.fillRect(0, SZ - 4, SZ, 4);
+      textures.mall_storefront = c;
+    }
     return textures;
   }
 
