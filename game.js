@@ -30,16 +30,17 @@
   const bubbles = [];      // {ownerKind:'boss'|'friend', getPos: ()=>({x,y}), text, expires}
 
   const upgrades = {
-    damage: 0,    // +6 dmg per level
-    fireRate: 0,  // -0.05s cooldown per level
+    damage: 0,    // +CONST.WEAPON.DAMAGE_PER_LEVEL dmg per level
+    fireRate: 0, // -CONST.WEAPON.FIRE_RATE_PER_LEVEL cooldown per level
     multishot: 0, // +1 projectile per level
   };
-  const PRICES = { damage: 8, fireRate: 10, multishot: 15 };
-  const MAX_LVL = { damage: 5, fireRate: 4, multishot: 3 };
+  const PRICES = CONST.ECONOMY.PRICES;
+  const MAX_LVL = CONST.ECONOMY.MAX_LVL;
 
   const state = {
     started: false, paused: false, dead: false, won: false,
-    health: 100, maxHealth: 100, ammo: 25, kills: 0, totalEnemies: 0, coins: 0,
+    health: CONST.PLAYER.START_HEALTH, maxHealth: CONST.PLAYER.START_MAX_HEALTH,
+    ammo: CONST.PLAYER.START_AMMO, kills: 0, totalEnemies: 0, coins: 0,
     recentHurt: 0, recentKill: 0,
     fireCooldown: 0, weaponFireFrame: 0,
     bob: 0, walkPhase: 0,
@@ -104,8 +105,9 @@
     if (!mouseLocked) return;
     if (pointerLockJustAcquired) return; // ignore the spike right after lock
     // Clamp per-event movement to avoid browser-reported spikes that snap the view.
-    const mx = Math.max(-80, Math.min(80, e.movementX || 0));
-    player.dir += mx * 0.0025;
+    const C = CONST.PLAYER;
+    const mx = Math.max(-C.MOUSE_DELTA_CLAMP, Math.min(C.MOUSE_DELTA_CLAMP, e.movementX || 0));
+    player.dir += mx * C.MOUSE_SENSITIVITY;
   });
   function togglePause() { if (mouseLocked) document.exitPointerLock(); }
 
@@ -155,8 +157,8 @@
   }
 
   // ---- FRIEND-SHOP CONSTANTS (must be initialized before buildFriendShopUI runs) ----
-  const HP_BOOST_BASE_PRICE = 12;
-  const HP_BOOST_AMOUNT = 10;
+  const HP_BOOST_BASE_PRICE = CONST.ECONOMY.HP_BOOST_BASE_PRICE;
+  const HP_BOOST_AMOUNT = CONST.ECONOMY.HP_BOOST_AMOUNT;
 
   // ---- SHOP ----
   buildShopUI();
@@ -230,7 +232,7 @@
       }
     });
   }
-  function currentPrice(k) { return PRICES[k] + upgrades[k] * Math.ceil(PRICES[k] * 0.6); }
+  function currentPrice(k) { return PRICES[k] + upgrades[k] * Math.ceil(PRICES[k] * CONST.ECONOMY.PRICE_SCALE_FACTOR); }
   function buyUpgrade(k) {
     if (upgrades[k] >= MAX_LVL[k]) return;
     const p = currentPrice(k);
@@ -316,11 +318,11 @@
   }
   function hpBoostPrice() {
     // Each boost gets a bit more expensive.
-    const tier = Math.floor((state.maxHealth - 100) / HP_BOOST_AMOUNT);
-    return HP_BOOST_BASE_PRICE + tier * 6;
+    const tier = Math.floor((state.maxHealth - CONST.PLAYER.START_MAX_HEALTH) / HP_BOOST_AMOUNT);
+    return HP_BOOST_BASE_PRICE + tier * CONST.ECONOMY.HP_BOOST_TIER_INCREMENT;
   }
   function fullHealPrice() {
-    return 8;
+    return CONST.ECONOMY.FULL_HEAL_PRICE;
   }
   function refreshFriendShopUI() {
     const el = document.getElementById('friend-shop');
@@ -409,7 +411,7 @@
 
   // Hard cap on living cavemen on the map at any time.
   function enemyCapForLevel(idx) {
-    return 10 + idx * 2; // L1=10, L2=12, L3=14
+    return CONST.ENEMY.CAP_BASE + idx * CONST.ENEMY.CAP_PER_LEVEL;
   }
   function initialEnemyCountForLevel(idx) {
     return enemyCapForLevel(idx); // start at the cap
@@ -473,21 +475,21 @@
         });
       }
     }
-    sprinkle('ammo', 10 + idx * 2);
-    sprinkle('health', 6 + idx);
+    sprinkle('ammo', CONST.PICKUP.AMMO_SPRINKLE_BASE + idx * CONST.PICKUP.AMMO_SPRINKLE_PER_LEVEL);
+    sprinkle('health', CONST.PICKUP.HEALTH_SPRINKLE_BASE + idx * CONST.PICKUP.HEALTH_SPRINKLE_PER_LEVEL);
 
-    // Boss: schedule random appearance within 15s..55s of level start.
+    // Boss: schedule random appearance within SPAWN_DELAY_MIN..(MIN+RAND) of level start.
     levelStartT = performance.now() / 1000;
-    bossSpawnAt = levelStartT + 15 + Math.random() * 40;
-    waveTimer = 8 + Math.random() * 6;
+    bossSpawnAt = levelStartT + CONST.BOSS.SPAWN_DELAY_MIN + Math.random() * CONST.BOSS.SPAWN_DELAY_RAND;
+    waveTimer = CONST.WAVE.INITIAL_TIMER_MIN + Math.random() * CONST.WAVE.INITIAL_TIMER_RAND;
 
     state.totalEnemies = enemies.length + 1; // +1 for upcoming boss
     state.kills = 0;
     state.recentHurt = 0; state.recentKill = 0;
     if (fullReset) {
-      state.maxHealth = 100;
+      state.maxHealth = CONST.PLAYER.START_MAX_HEALTH;
       state.health = state.maxHealth;
-      state.ammo = 25; state.coins = 0;
+      state.ammo = CONST.PLAYER.START_AMMO; state.coins = 0;
       upgrades.damage = 0; upgrades.fireRate = 0; upgrades.multishot = 0;
       state.weapon = 'blaster';
       state.dead = false; state.won = false;
@@ -499,7 +501,7 @@
     const t = LEVEL.randomOpenTile(player, 8);
     if (!t) return;
     boss = {
-      x: t.x, y: t.y, hp: 200, maxHp: 200,
+      x: t.x, y: t.y, hp: CONST.BOSS.HP, maxHp: CONST.BOSS.HP,
       state: 'idle', frame: 0, frameTimer: 0,
       attackTimer: 0, throwTimer: 2, throwCooldown: 0,
       seenPlayer: false, awoke: false,
@@ -508,11 +510,12 @@
     bossWake();
     showBanner('BOSS HAS ARRIVED', '#c11515');
     AUDIO.playClip('bossSpawn');
+    if (window.EVENTS) EVENTS.emit('boss:spawned', { x: boss.x, y: boss.y });
   }
 
   function makeEnemy(x, y, variant) {
     return {
-      x, y, hp: 30, state: 'idle',
+      x, y, hp: CONST.ENEMY.HP, state: 'idle',
       frame: 0, frameTimer: 0, attackTimer: 0,
       deathTimer: 0,    // time since death
       variant,
@@ -567,79 +570,84 @@
     if (state.fireCooldown > 0) return;
     if (state.ammo <= 0) { AUDIO.SFX.empty(); return; }
     state.ammo--;
+    const W = CONST.WEAPON;
     const isShotgun = state.weapon === 'shotgun';
-    state.fireCooldown = Math.max(0.12,
-      (isShotgun ? 0.55 : 0.35) - upgrades.fireRate * 0.05);
-    state.weaponFireFrame = isShotgun ? 0.18 : 0.12;
+    const spec = isShotgun ? W.SHOTGUN : W.BLASTER;
+    state.fireCooldown = Math.max(W.MIN_COOLDOWN,
+      spec.COOLDOWN - upgrades.fireRate * W.FIRE_RATE_PER_LEVEL);
+    state.weaponFireFrame = spec.FIRE_FRAME_DURATION;
     AUDIO.SFX.fire();
-    if (isShotgun) setTimeout(() => AUDIO.SFX.fire(), 30);
+    if (isShotgun) setTimeout(() => AUDIO.SFX.fire(), W.SHOTGUN.SECOND_FIRE_SFX_DELAY_MS);
     muzzleEl.style.opacity = '1';
-    setTimeout(() => muzzleEl.style.opacity = '0', 100);
+    setTimeout(() => muzzleEl.style.opacity = '0', W.MUZZLE_FLASH_MS);
     const base = player.dir;
-    const speed = isShotgun ? 14 : 12;
-    const baseShots = isShotgun ? 6 : 2;
-    const shots = baseShots + upgrades.multishot;
-    const spreadStep = isShotgun ? 0.07 : 0.04;
-    const baseDmg = (isShotgun ? 14 : 18) + upgrades.damage * 6;
+    const speed = spec.PROJECTILE_SPEED;
+    const shots = spec.SHOTS + upgrades.multishot;
+    const spreadStep = spec.SPREAD_STEP;
+    const baseDmg = spec.DAMAGE + upgrades.damage * W.DAMAGE_PER_LEVEL;
     for (let i = 0; i < shots; i++) {
       const spread = (i - (shots - 1) / 2) * spreadStep;
-      const a = base + spread + (Math.random() - 0.5) * 0.03;
+      const a = base + spread + (Math.random() - 0.5) * W.AIM_JITTER;
       projectiles.push({
-        x: player.x + Math.cos(a) * 0.4, y: player.y + Math.sin(a) * 0.4,
+        x: player.x + Math.cos(a) * W.PROJECTILE_SPAWN_OFFSET,
+        y: player.y + Math.sin(a) * W.PROJECTILE_SPAWN_OFFSET,
         vx: Math.cos(a) * speed, vy: Math.sin(a) * speed,
-        life: 1.2, owner: 'player', dmg: baseDmg,
+        life: W.PROJECTILE_LIFE, owner: 'player', dmg: baseDmg,
       });
     }
+    if (window.EVENTS) EVENTS.emit('player:fired', { weapon: state.weapon, shots, dmg: baseDmg });
   }
 
   function updateEnemies(dt) {
+    const E = CONST.ENEMY;
+    const MUTUAL_SQ = E.MUTUAL_RADIUS * E.MUTUAL_RADIUS;
     for (const e of enemies) {
       if (e.removed) continue;
       if (e.state === 'dead') {
         e.deathTimer += dt;
-        if (e.deathTimer > 60) e.removed = true;
+        if (e.deathTimer > E.DEATH_FADE_DURATION) e.removed = true;
         continue;
       }
       const dx = player.x - e.x, dy = player.y - e.y;
       const dist = Math.hypot(dx, dy);
-      const canSee = dist < 14 && lineOfSight(e.x, e.y, player.x, player.y);
+      const canSee = dist < E.SIGHT_RANGE && lineOfSight(e.x, e.y, player.x, player.y);
       if (canSee && !e.seenPlayer) { e.seenPlayer = true; AUDIO.SFX.enemyGrunt(); }
       const speed = tweaks.enemySpeed;
-      if (e.seenPlayer && dist > 1.0 && dist < 18) {
+      if (e.seenPlayer && dist > E.ATTACK_RANGE && dist < E.CHASE_RANGE_MAX) {
         e.state = 'chase';
         const a = Math.atan2(dy, dx);
-        const moved = tryMove(e.x, e.y, Math.cos(a) * speed * dt, Math.sin(a) * speed * dt, 0.3);
+        const moved = tryMove(e.x, e.y, Math.cos(a) * speed * dt, Math.sin(a) * speed * dt, E.BODY_RADIUS);
         let blocked = false;
         for (const o of enemies) {
           if (o === e || o.state === 'dead' || o.removed) continue;
           const ddx = o.x - moved.x, ddy = o.y - moved.y;
-          if (ddx * ddx + ddy * ddy < 0.5 * 0.5) { blocked = true; break; }
+          if (ddx * ddx + ddy * ddy < MUTUAL_SQ) { blocked = true; break; }
         }
         if (!blocked) { e.x = moved.x; e.y = moved.y; }
         e.frameTimer += dt;
-        if (e.frameTimer > 0.18) { e.frameTimer = 0; e.frame = e.frame === 1 ? 2 : 1; }
-        if (Math.random() < 0.003) AUDIO.SFX.enemyGrunt();
-      } else if (e.seenPlayer && dist <= 1.0) {
+        if (e.frameTimer > E.FRAME_CHASE) { e.frameTimer = 0; e.frame = e.frame === 1 ? 2 : 1; }
+        if (Math.random() < E.AMBIENT_GRUNT_PROB) AUDIO.SFX.enemyGrunt();
+      } else if (e.seenPlayer && dist <= E.ATTACK_RANGE) {
         e.state = 'attack';
         e.attackTimer -= dt;
         if (e.attackTimer <= 0) {
-          e.attackTimer = 1.0; e.frame = 3;
-          if (dist < 1.1) damagePlayer(8 + Math.random() * 8);
+          e.attackTimer = E.ATTACK_COOLDOWN; e.frame = 3;
+          if (dist < E.ATTACK_HIT_RANGE) damagePlayer(E.ATTACK_DAMAGE_MIN + Math.random() * E.ATTACK_DAMAGE_RAND);
         } else if (e.attackTimer < 0.7) e.frame = 0;
         else e.frame = 3;
       } else {
         e.state = 'idle';
         e.wanderTimer -= dt;
         if (e.wanderTimer <= 0) {
-          e.wanderTimer = 1.5 + Math.random() * 2.5;
+          e.wanderTimer = E.WANDER_TIMER_MIN + Math.random() * E.WANDER_TIMER_RAND;
           e.wanderDir = Math.random() * Math.PI * 2;
         }
         if (Math.random() < 0.3) {
-          const m = tryMove(e.x, e.y, Math.cos(e.wanderDir) * 0.4 * dt, Math.sin(e.wanderDir) * 0.4 * dt, 0.3);
+          const m = tryMove(e.x, e.y, Math.cos(e.wanderDir) * E.WANDER_SPEED * dt, Math.sin(e.wanderDir) * E.WANDER_SPEED * dt, E.BODY_RADIUS);
           e.x = m.x; e.y = m.y;
         }
         e.frameTimer += dt;
-        if (e.frameTimer > 0.4) { e.frameTimer = 0; e.frame = e.frame === 0 ? 1 : 0; }
+        if (e.frameTimer > E.FRAME_IDLE) { e.frameTimer = 0; e.frame = e.frame === 0 ? 1 : 0; }
       }
     }
     // garbage collect removed
@@ -650,48 +658,49 @@
 
   function updateBoss(dt) {
     if (!boss || boss.state === 'dead') return;
+    const B = CONST.BOSS;
     const dx = player.x - boss.x, dy = player.y - boss.y;
     const dist = Math.hypot(dx, dy);
-    const canSee = dist < 22 && lineOfSight(boss.x, boss.y, player.x, player.y);
+    const canSee = dist < B.SIGHT_RANGE && lineOfSight(boss.x, boss.y, player.x, player.y);
     if (canSee && !boss.seenPlayer) {
       boss.seenPlayer = true;
       bossWake();
     }
     if (!boss.seenPlayer) {
       boss.frameTimer += dt;
-      if (boss.frameTimer > 0.5) { boss.frameTimer = 0; boss.frame = boss.frame === 0 ? 1 : 0; }
+      if (boss.frameTimer > B.FRAME_IDLE) { boss.frameTimer = 0; boss.frame = boss.frame === 0 ? 1 : 0; }
       return;
     }
     boss.throwCooldown -= dt;
     boss.attackTimer -= dt;
     const a = Math.atan2(dy, dx);
 
-    if (dist > 1.6) {
-      const speed = tweaks.enemySpeed * 1.2;
-      const m = tryMove(boss.x, boss.y, Math.cos(a) * speed * dt, Math.sin(a) * speed * dt, 0.35);
+    if (dist > B.MELEE_RANGE) {
+      const speed = tweaks.enemySpeed * B.SPEED_MULT;
+      const m = tryMove(boss.x, boss.y, Math.cos(a) * speed * dt, Math.sin(a) * speed * dt, B.BODY_RADIUS);
       boss.x = m.x; boss.y = m.y;
       boss.state = 'chase';
       boss.frameTimer += dt;
-      if (boss.frameTimer > 0.2) { boss.frameTimer = 0; boss.frame = boss.frame === 0 ? 1 : 0; }
+      if (boss.frameTimer > B.FRAME_CHASE) { boss.frameTimer = 0; boss.frame = boss.frame === 0 ? 1 : 0; }
 
-      if (boss.throwCooldown <= 0 && dist > 2.5 && dist < 14) {
-        boss.throwCooldown = 1.4 + Math.random() * 0.8;
+      if (boss.throwCooldown <= 0 && dist > B.THROW_RANGE_MIN && dist < B.THROW_RANGE_MAX) {
+        boss.throwCooldown = B.THROW_COOLDOWN_MIN + Math.random() * B.THROW_COOLDOWN_RAND;
         boss.frame = 3;
-        const sp = 7;
-        const aim = a + (Math.random() - 0.5) * 0.06;
+        const sp = B.THROW_PROJECTILE_SPEED;
+        const aim = a + (Math.random() - 0.5) * B.THROW_AIM_JITTER;
         enemyProjectiles.push({
           x: boss.x + Math.cos(aim) * 0.5, y: boss.y + Math.sin(aim) * 0.5,
           vx: Math.cos(aim) * sp, vy: Math.sin(aim) * sp,
-          life: 3, kind: 'cola',
+          life: CONST.WEAPON.ENEMY_PROJECTILE_LIFE, kind: 'cola',
         });
         AUDIO.SFX.fire();
       }
     } else {
       boss.state = 'attack';
       if (boss.attackTimer <= 0) {
-        boss.attackTimer = 0.9;
+        boss.attackTimer = B.MELEE_COOLDOWN;
         boss.frame = 2;
-        if (dist < 1.7) damagePlayer(18 + Math.random() * 8);
+        if (dist < B.MELEE_HIT_RANGE) damagePlayer(B.MELEE_DAMAGE_MIN + Math.random() * B.MELEE_DAMAGE_RAND);
         AUDIO.SFX.hit();
       } else if (boss.attackTimer < 0.55) {
         boss.frame = 0;
@@ -723,19 +732,21 @@
   function damagePlayer(amount) {
     if (state.dead) return;
     state.health -= amount;
-    state.recentHurt = 0.6;
+    state.recentHurt = CONST.UI.RECENT_HURT_DURATION;
     AUDIO.SFX.playerHurt();
     damageFlash.style.opacity = '1';
-    setTimeout(() => damageFlash.style.opacity = '0', 200);
+    setTimeout(() => damageFlash.style.opacity = '0', CONST.UI.DAMAGE_FLASH_MS);
+    if (window.EVENTS) EVENTS.emit('player:damaged', { amount, health: state.health });
     if (state.health <= 0) {
       state.health = 0; state.dead = true;
       AUDIO.SFX.playerDie();
       AUDIO.playClip('death');
+      if (window.EVENTS) EVENTS.emit('player:died', {});
       setTimeout(() => {
         if (mouseLocked) document.exitPointerLock();
         deathOverlay.classList.add('show');
         AUDIO.fadeMusic(0.0, 800);
-      }, 600);
+      }, CONST.UI.DEATH_DELAY_MS);
     }
   }
 
@@ -761,7 +772,7 @@
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2;
       const r = 0.15 + Math.random() * 0.25;
-      coins.push({ x: x + Math.cos(a) * r, y: y + Math.sin(a) * r, life: 30, bob: Math.random() * Math.PI * 2 });
+      coins.push({ x: x + Math.cos(a) * r, y: y + Math.sin(a) * r, life: CONST.PICKUP.COIN_LIFE, bob: Math.random() * Math.PI * 2 });
     }
   }
 
@@ -770,14 +781,19 @@
     e.deathTimer = 0;
     e.frame = 0;
     state.kills++;
-    state.recentKill = 0.8;
+    state.recentKill = CONST.UI.RECENT_KILL_DURATION;
     AUDIO.SFX.enemyDie();
-    dropCoins(e.x, e.y, 1 + Math.floor(Math.random() * 2));
+    dropCoins(e.x, e.y, CONST.PICKUP.COINS_PER_KILL_MIN + Math.floor(Math.random() * CONST.PICKUP.COINS_PER_KILL_RAND));
+    if (window.EVENTS) EVENTS.emit('enemy:killed', { x: e.x, y: e.y, variant: e.variant });
     // No respawn from the dead. New enemies arrive only via updateWaves,
     // and only up to the per-level cap.
   }
 
   function updateProjectiles(dt) {
+    const W = CONST.WEAPON;
+    const HIT_SQ = W.PROJECTILE_HIT_RADIUS * W.PROJECTILE_HIT_RADIUS;
+    const BOSS_HIT_SQ = W.PROJECTILE_HIT_RADIUS_BOSS * W.PROJECTILE_HIT_RADIUS_BOSS;
+    const ENEMY_PROJ_HIT_SQ = W.ENEMY_PROJECTILE_HIT_RADIUS * W.ENEMY_PROJECTILE_HIT_RADIUS;
     for (let i = projectiles.length - 1; i >= 0; i--) {
       const p = projectiles[i];
       p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
@@ -785,11 +801,11 @@
       let consumed = false;
       for (const f of friends) {
         const dx = f.x - p.x, dy = f.y - p.y;
-        if (dx * dx + dy * dy < 0.35 * 0.35) {
-          damagePlayer(15);
+        if (dx * dx + dy * dy < HIT_SQ) {
+          damagePlayer(W.FRIENDLY_FIRE_DAMAGE);
           flashKarma();
-          sayBubble({ kind: 'friend', friend: f, text: 'i love you my friend', dur: 2.5 });
-          f.sayUntil = performance.now() / 1000 + 2.5;
+          sayBubble({ kind: 'friend', friend: f, text: 'i love you my friend', dur: CONST.FRIEND.LOVE_BUBBLE_SECS });
+          f.sayUntil = performance.now() / 1000 + CONST.FRIEND.LOVE_BUBBLE_SECS;
           projectiles.splice(i, 1);
           consumed = true;
           break;
@@ -799,9 +815,11 @@
       for (const e of enemies) {
         if (e.state === 'dead' || e.removed) continue;
         const dx = e.x - p.x, dy = e.y - p.y;
-        if (dx * dx + dy * dy < 0.35 * 0.35) {
-          e.hp -= p.dmg || 18;
+        if (dx * dx + dy * dy < HIT_SQ) {
+          const dmg = p.dmg || W.BLASTER.DAMAGE;
+          e.hp -= dmg;
           AUDIO.SFX.hit();
+          if (window.EVENTS) EVENTS.emit('enemy:hit', { x: e.x, y: e.y, dmg, hp: e.hp });
           if (e.hp <= 0) {
             onEnemyKilled(e);
             checkLevelComplete();
@@ -814,24 +832,27 @@
       if (consumed) continue;
       if (boss && boss.state !== 'dead') {
         const dx = boss.x - p.x, dy = boss.y - p.y;
-        if (dx * dx + dy * dy < 0.5 * 0.5) {
-          boss.hp -= (p.dmg || 18) * 0.8;
+        if (dx * dx + dy * dy < BOSS_HIT_SQ) {
+          const dmg = (p.dmg || W.BLASTER.DAMAGE) * CONST.BOSS.DAMAGE_TAKEN_MULT;
+          boss.hp -= dmg;
           AUDIO.SFX.hit();
+          if (window.EVENTS) EVENTS.emit('boss:hit', { x: boss.x, y: boss.y, dmg, hp: boss.hp });
           if (!boss.seenPlayer) { boss.seenPlayer = true; bossWake(); }
           if (boss.hp <= 0) {
             boss.state = 'dead';
             boss.deathTimer = 0;
             state.kills++;
-            state.recentKill = 1.5;
+            state.recentKill = CONST.UI.RECENT_KILL_DURATION_BOSS;
             AUDIO.SFX.enemyDie();
             setTimeout(() => AUDIO.SFX.enemyDie(), 200);
             AUDIO.playClip('bossDead');
-            dropCoins(boss.x, boss.y, 14);
+            dropCoins(boss.x, boss.y, CONST.BOSS.COIN_DROP_ON_KILL);
             // Drop the second weapon at the boss's position.
             drops.push({ x: boss.x, y: boss.y, kind: 'shotgun' });
             showBanner('SHOTGUN DROPPED', '#ffd33a');
+            if (window.EVENTS) EVENTS.emit('boss:killed', { x: boss.x, y: boss.y });
             // Reschedule next boss arrival (waves continue).
-            bossSpawnAt = performance.now() / 1000 + 30 + Math.random() * 30;
+            bossSpawnAt = performance.now() / 1000 + CONST.BOSS.RESPAWN_DELAY_MIN + Math.random() * CONST.BOSS.RESPAWN_DELAY_RAND;
             checkLevelComplete();
           }
           projectiles.splice(i, 1);
@@ -843,8 +864,8 @@
       p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
       if (p.life <= 0 || isWall(p.x, p.y)) { enemyProjectiles.splice(i, 1); continue; }
       const dx = player.x - p.x, dy = player.y - p.y;
-      if (dx * dx + dy * dy < 0.4 * 0.4) {
-        damagePlayer(14);
+      if (dx * dx + dy * dy < ENEMY_PROJ_HIT_SQ) {
+        damagePlayer(W.COLA_DAMAGE);
         enemyProjectiles.splice(i, 1);
       }
     }
@@ -860,7 +881,8 @@
     state.transitioning = true;
     showBanner(`LEVEL ${state.levelIndex + 2}`, '#7cff5a');
     AUDIO.SFX.victory();
-    setTimeout(() => loadLevel(state.levelIndex + 1, false), 1400);
+    if (window.EVENTS) EVENTS.emit('level:advanced', { from: state.levelIndex, to: state.levelIndex + 1 });
+    setTimeout(() => loadLevel(state.levelIndex + 1, false), CONST.UI.LEVEL_TRANSITION_MS);
   }
 
   function showBanner(text, color) {
@@ -879,29 +901,31 @@
     el.textContent = text;
     el.style.opacity = '1';
     clearTimeout(el._t);
-    el._t = setTimeout(() => { el.style.opacity = '0'; }, 1800);
+    el._t = setTimeout(() => { el.style.opacity = '0'; }, CONST.UI.BANNER_MS);
   }
 
   function triggerVictory() {
     if (state.won) return;
     state.won = true;
     AUDIO.SFX.victory();
+    if (window.EVENTS) EVENTS.emit('game:victory', {});
     setTimeout(() => {
       if (mouseLocked) document.exitPointerLock();
       victoryOverlay.classList.add('show');
       AUDIO.fadeMusic(0.0, 800);
-    }, 800);
+    }, CONST.UI.VICTORY_DELAY_MS);
   }
 
   function updateFriends(dt) {
-    const r = 0.25;
+    const F = CONST.FRIEND;
+    const r = F.BODY_RADIUS;
     for (const f of friends) {
       f.wanderTimer -= dt;
       if (f.wanderTimer <= 0) {
-        f.wanderTimer = 2 + Math.random() * 3;
+        f.wanderTimer = F.WANDER_TIMER_MIN + Math.random() * F.WANDER_TIMER_RAND;
         f.wanderDir = Math.random() * Math.PI * 2;
       }
-      const speed = 0.6;
+      const speed = F.WANDER_SPEED;
       const dx = Math.cos(f.wanderDir) * speed * dt;
       const dy = Math.sin(f.wanderDir) * speed * dt;
       const nx = f.x + dx, ny = f.y + dy;
@@ -926,11 +950,14 @@
         f.stuckTicks = 0;
       }
       f.frameTimer += dt;
-      if (f.frameTimer > 0.4) { f.frameTimer = 0; f.frame = f.frame === 0 ? 1 : 0; }
+      if (f.frameTimer > F.FRAME_TIMING) { f.frameTimer = 0; f.frame = f.frame === 0 ? 1 : 0; }
     }
   }
 
   function updatePickups(dt) {
+    const P = CONST.PICKUP;
+    const PICKUP_SQ = P.PICKUP_RADIUS * P.PICKUP_RADIUS;
+    const COIN_SQ = P.COIN_PICKUP_RADIUS * P.COIN_PICKUP_RADIUS;
     const now = performance.now() / 1000;
     for (const p of pickups) {
       if (p.collected) {
@@ -942,28 +969,30 @@
         continue;
       }
       const dx = player.x - p.x, dy = player.y - p.y;
-      if (dx * dx + dy * dy < 0.45 * 0.45) {
+      if (dx * dx + dy * dy < PICKUP_SQ) {
         p.collected = true;
-        p.respawnAt = now + (p.kind === 'ammo' ? 12 : 18);
+        p.respawnAt = now + (p.kind === 'ammo' ? P.AMMO_RESPAWN : P.HEALTH_RESPAWN);
         if (p.kind === 'health') {
-          state.health = Math.min(state.maxHealth || 100, state.health + 30);
+          state.health = Math.min(state.maxHealth || CONST.PLAYER.START_MAX_HEALTH, state.health + P.HEALTH_AMOUNT);
           AUDIO.SFX.pickup();
         } else if (p.kind === 'ammo') {
-          state.ammo += 16;
+          state.ammo += P.AMMO_AMOUNT;
           AUDIO.SFX.ammoPickup();
         }
+        if (window.EVENTS) EVENTS.emit('pickup:collected', { kind: p.kind, x: p.x, y: p.y });
       }
     }
     // coins pickup + lifetime
     for (let i = coins.length - 1; i >= 0; i--) {
       const c = coins[i];
-      c.life -= dt; c.bob += dt * 4;
+      c.life -= dt; c.bob += dt * P.COIN_BOB_SPEED;
       if (c.life <= 0) { coins.splice(i, 1); continue; }
       const dx = player.x - c.x, dy = player.y - c.y;
-      if (dx * dx + dy * dy < 0.5 * 0.5) {
+      if (dx * dx + dy * dy < COIN_SQ) {
         state.coins++;
         AUDIO.SFX.ammoPickup();
         coins.splice(i, 1);
+        if (window.EVENTS) EVENTS.emit('pickup:collected', { kind: 'coin', x: c.x, y: c.y });
       }
     }
   }
@@ -1018,38 +1047,40 @@
   }
 
   function updateWaves(dt) {
+    const B = CONST.BOSS;
+    const WV = CONST.WAVE;
     const now = performance.now() / 1000;
     // BOSS: spawn at scheduled time if not present and not currently dead
     if (!boss && now >= bossSpawnAt) {
       spawnBossAtRandom();
     }
-    // Boss despawn after death (~10s) so it can return later
+    // Boss despawn after death (DESPAWN_AFTER_DEATH s) so it can return later
     if (boss && boss.state === 'dead') {
       boss.deathTimer = (boss.deathTimer || 0) + dt;
-      if (boss.deathTimer > 10) {
+      if (boss.deathTimer > B.DESPAWN_AFTER_DEATH) {
         boss = null;
         // bossSpawnAt was already set when boss died
       }
     }
-    // Boss taunt: every ~6s while alive
+    // Boss taunt: every TAUNT_COOLDOWN_MIN..(MIN+RAND) s while alive
     if (boss && boss.state !== 'dead' && boss.seenPlayer) {
       boss.tauntTimer = (boss.tauntTimer || 0) - dt;
       if (boss.tauntTimer <= 0) {
-        boss.tauntTimer = 6 + Math.random() * 4;
+        boss.tauntTimer = B.TAUNT_COOLDOWN_MIN + Math.random() * B.TAUNT_COOLDOWN_RAND;
         sayBubble({ kind: 'boss', text: 'זה מלא כסף מה יש לך', dur: 3.2 });
       }
     }
     // Ambient enemy waves: top up to the per-level cap. Never exceed it.
     waveTimer -= dt;
     if (waveTimer <= 0) {
-      waveTimer = 10 + Math.random() * 6;
+      waveTimer = WV.RECUR_TIMER_MIN + Math.random() * WV.RECUR_TIMER_RAND;
       const aliveCount = enemies.filter(e => e.state !== 'dead' && !e.removed).length;
       const cap = enemyCapForLevel(state.levelIndex);
       const slots = Math.max(0, cap - aliveCount);
       // Only add a few at a time so it feels like waves, not a flood.
-      const want = Math.min(slots, 1 + Math.floor(Math.random() * 2));
+      const want = Math.min(slots, WV.BURST_MIN + Math.floor(Math.random() * WV.BURST_RAND));
       for (let i = 0; i < want; i++) {
-        const e = spawnEnemyAtSafeTile(Math.floor(Math.random() * 3), true, 6);
+        const e = spawnEnemyAtSafeTile(Math.floor(Math.random() * CONST.ENEMY.VARIANT_COUNT), true, 6);
         if (e) state.totalEnemies++;
       }
     }
@@ -1059,7 +1090,7 @@
     for (let i = drops.length - 1; i >= 0; i--) {
       const d = drops[i];
       const dx = player.x - d.x, dy = player.y - d.y;
-      if (dx * dx + dy * dy < 0.5 * 0.5) {
+      if (dx * dx + dy * dy < CONST.PICKUP.DROP_PICKUP_RADIUS_SQ) {
         if (d.kind === 'shotgun') {
           state.weapon = 'shotgun';
           state.ammo += 20;
@@ -1075,7 +1106,7 @@
     if (state.transitioning) return;
     for (const ex of LEVEL.exits) {
       const dx = player.x - ex.x, dy = player.y - ex.y;
-      if (dx * dx + dy * dy < 0.5 * 0.5) {
+      if (dx * dx + dy * dy < CONST.PICKUP.DROP_PICKUP_RADIUS_SQ) {
         if (state.levelIndex >= LEVEL.count - 1) triggerVictory();
         else advanceLevel();
         return;
@@ -1085,6 +1116,8 @@
 
   function updatePlayer(dt) {
     if (state.dead || state.paused || state.shopOpen || state.friendShopOpen) return;
+    const P = CONST.PLAYER;
+    const A = CONST.AUDIO;
     let mx = 0, my = 0;
     const fx = Math.cos(player.dir), fy = Math.sin(player.dir);
     const sx = -fy, sy = fx;
@@ -1092,17 +1125,16 @@
     if (keys['KeyS'] || keys['ArrowDown']) { mx -= fx; my -= fy; }
     if (keys['KeyA']) { mx -= sx; my -= sy; }
     if (keys['KeyD']) { mx += sx; my += sy; }
-    if (keys['ArrowLeft']) player.dir -= 2.4 * dt;
-    if (keys['ArrowRight']) player.dir += 2.4 * dt;
+    if (keys['ArrowLeft']) player.dir -= P.TURN_SPEED * dt;
+    if (keys['ArrowRight']) player.dir += P.TURN_SPEED * dt;
     const len = Math.hypot(mx, my);
     if (len > 0) {
       mx /= len; my /= len;
-      const speed = 3.0;
-      const m = tryMove(player.x, player.y, mx * speed * dt, my * speed * dt, 0.22);
+      const m = tryMove(player.x, player.y, mx * P.MOVE_SPEED * dt, my * P.MOVE_SPEED * dt, P.BODY_RADIUS);
       player.x = m.x; player.y = m.y;
-      state.walkPhase += dt * 8;
-      state.bob = Math.sin(state.walkPhase) * 4;
-      if (Math.random() < 0.04) AUDIO.SFX.footstep();
+      state.walkPhase += dt * P.WALK_BOB_FREQ;
+      state.bob = Math.sin(state.walkPhase) * P.WALK_BOB_AMP;
+      if (Math.random() < P.FOOTSTEP_PROB) AUDIO.SFX.footstep();
     } else {
       state.bob *= 0.85;
     }
@@ -1114,14 +1146,14 @@
       if (e.seenPlayer) {
         const dx = e.x - player.x, dy = e.y - player.y;
         const d = Math.hypot(dx, dy);
-        if (d < 12) tension = Math.max(tension, 1 - d / 12);
+        if (d < A.MUSIC_TENSION_RANGE) tension = Math.max(tension, 1 - d / A.MUSIC_TENSION_RANGE);
       }
     }
-    if (boss && boss.seenPlayer && boss.state !== 'dead') tension = Math.max(tension, 0.9);
-    const targetGain = 0.14 + tension * 0.18;
+    if (boss && boss.seenPlayer && boss.state !== 'dead') tension = Math.max(tension, A.BOSS_TENSION);
+    const targetGain = A.MUSIC_BASE_GAIN + tension * A.MUSIC_TENSION_GAIN;
     if (Math.abs(targetGain - (state._musicGain || 0)) > 0.01) {
       state._musicGain = targetGain;
-      AUDIO.fadeMusic(targetGain, 600);
+      AUDIO.fadeMusic(targetGain, A.MUSIC_FADE_MS);
     }
   }
 
