@@ -15,6 +15,8 @@
   const playfield = document.getElementById('playfield');
 
   const player = { x: 0, y: 0, dir: 0 };
+  // Exposed for systems (Juice, Selfie) that need to project world→screen.
+  window.__GAME_PLAYER = player;
   const projectiles = [];      // player orbs
   const enemyProjectiles = []; // boss cola cans
   const enemies = [];
@@ -47,6 +49,7 @@
     levelIndex: 0, levelCount: 1,
     shopOpen: false,
     transitioning: false,
+    cinematic: false,                 // Selfie / cutscene takes over input + camera
     weapon: 'blaster',  // 'blaster' | 'shotgun'
   };
 
@@ -404,6 +407,9 @@
     });
     hud = HUD.create(hudCanvas, faces);
 
+    if (window.JUICE) JUICE.init({ playfield, rc });
+    if (window.SELFIE) SELFIE.init({ playfield, view, rc, player, state });
+
     state.levelCount = LEVEL.count;
     loadLevel(0, true);
     requestAnimationFrame(loop);
@@ -430,6 +436,9 @@
     LEVEL.load(idx);
     state.levelIndex = idx;
     state.transitioning = false;
+    state.cinematic = false;
+    if (window.JUICE) JUICE.reset();
+    if (window.SELFIE) SELFIE.cancel();
 
     player.x = LEVEL.spawn.x; player.y = LEVEL.spawn.y; player.dir = LEVEL.spawn.dir;
     enemies.length = 0; friends.length = 0;
@@ -1172,8 +1181,13 @@
     requestAnimationFrame(loop);
   }
   function tick(t) {
-    const dt = Math.min(0.05, (t - lastT) / 1000);
+    const realDt = Math.min(0.05, (t - lastT) / 1000);
     lastT = t;
+
+    if (window.JUICE) JUICE.update(realDt);
+    if (window.SELFIE && SELFIE.isActive()) SELFIE.update(realDt);
+    const ts = window.JUICE ? JUICE.getTimeScale() : 1;
+    const dt = realDt * ts;
 
     if (state.started) {
       if (state.fireCooldown > 0) state.fireCooldown -= dt;
@@ -1181,7 +1195,7 @@
       if (state.recentHurt > 0) state.recentHurt -= dt;
       if (state.recentKill > 0) state.recentKill -= dt;
 
-      if (!state.paused && !state.dead && !state.won && !state.shopOpen && !state.friendShopOpen) {
+      if (!state.paused && !state.dead && !state.won && !state.shopOpen && !state.friendShopOpen && !state.cinematic) {
         updatePlayer(dt);
         updateEnemies(dt);
         updateBoss(dt);
@@ -1193,37 +1207,46 @@
       }
       updateBubbles();
 
+      if (window.JUICE) JUICE.applyToCamera(rc);
       rc.render(player);
 
       const ents = [];
-      for (const p of pickups) {
-        if (p.collected) continue;
-        ents.push({
-          x: p.x, y: p.y,
-          canvas: p.kind === 'health' ? healthSprite : ammoSprite,
-          frame: 0, frameW: 16, size: 0.5, yOffset: 0.25,
-        });
-      }
-      for (const c of coins) {
-        ents.push({
-          x: c.x, y: c.y, canvas: coinSprite,
-          frameW: 16, frame: 0, size: 0.35,
-          yOffset: 0.4 + Math.sin(c.bob) * 0.08,
-        });
-      }
-      for (const d of drops) {
-        ents.push({
-          x: d.x, y: d.y, canvas: weaponDropSprite,
-          frameW: 24, frame: 0, size: 0.6,
-          yOffset: 0.25 + Math.sin(performance.now() / 300) * 0.06,
-        });
-      }
-      for (const f of friends) {
-        const frameW = friendSprite.width / 2;
-        ents.push({ x: f.x, y: f.y, canvas: friendSprite, frameW, frame: f.frame, size: 1, yOffset: 0 });
+      const cine = state.cinematic;
+      // Pickups, coins, weapon drops, projectiles, particles all hide during
+      // the selfie so the photo focuses on the boss + player + Dani. Friends
+      // also skipped — they're noisy in frame.
+      if (!cine) {
+        for (const p of pickups) {
+          if (p.collected) continue;
+          ents.push({
+            x: p.x, y: p.y,
+            canvas: p.kind === 'health' ? healthSprite : ammoSprite,
+            frame: 0, frameW: 16, size: 0.5, yOffset: 0.25,
+          });
+        }
+        for (const c of coins) {
+          ents.push({
+            x: c.x, y: c.y, canvas: coinSprite,
+            frameW: 16, frame: 0, size: 0.35,
+            yOffset: 0.4 + Math.sin(c.bob) * 0.08,
+          });
+        }
+        for (const d of drops) {
+          ents.push({
+            x: d.x, y: d.y, canvas: weaponDropSprite,
+            frameW: 24, frame: 0, size: 0.6,
+            yOffset: 0.25 + Math.sin(performance.now() / 300) * 0.06,
+          });
+        }
+        for (const f of friends) {
+          const frameW = friendSprite.width / 2;
+          ents.push({ x: f.x, y: f.y, canvas: friendSprite, frameW, frame: f.frame, size: 1, yOffset: 0 });
+        }
       }
       for (const e of enemies) {
         if (e.removed) continue;
+        // skip dead corpses during cinematic so they don't litter the photo
+        if (cine && e.state === 'dead') continue;
         const sprite = cavemanSprites[e.variant];
         const frameW = sprite.width / 4;
         let frame = e.frame;
@@ -1238,26 +1261,45 @@
       }
       if (boss) {
         const frameW = bossSprite.width / 4;
+        // During cinematic, render the boss BIGGER than alive (1.9 vs 1.6) so
+        // his face actually fills the photo. The sprite is 64×96 with the
+        // face in the upper 64px, so a positive yOffset shifts the sprite
+        // down — bringing the face up toward the center of the frame and
+        // letting the legs fall off the bottom of the photo crop.
+        const dead = boss.state === 'dead';
         ents.push({
           x: boss.x, y: boss.y, canvas: bossSprite, frameW,
-          frame: boss.state === 'dead' ? 0 : boss.frame,
-          size: boss.state === 'dead' ? 0.6 : 1.6,
-          yOffset: boss.state === 'dead' ? 0.4 : -0.15,
+          frame: cine ? 0 : (dead ? 0 : boss.frame),
+          size: cine ? 1.9 : (dead ? 0.6 : 1.6),
+          yOffset: cine ? 0.10 : (dead ? 0.4 : -0.15),
         });
       }
-      for (const pr of projectiles) {
-        ents.push({ x: pr.x, y: pr.y, canvas: projectileSprite, frameW: 16, frame: 0, size: 0.4 });
-      }
-      for (const pr of enemyProjectiles) {
-        ents.push({ x: pr.x, y: pr.y, canvas: colaCanSprite, frameW: 24, frame: 0, size: 0.5 });
+      if (!cine) {
+        for (const pr of projectiles) {
+          ents.push({ x: pr.x, y: pr.y, canvas: projectileSprite, frameW: 16, frame: 0, size: 0.4 });
+        }
+        for (const pr of enemyProjectiles) {
+          ents.push({ x: pr.x, y: pr.y, canvas: colaCanSprite, frameW: 24, frame: 0, size: 0.5 });
+        }
       }
       rc.renderSprites(player, ents);
+      if (window.JUICE && !cine) JUICE.drawParticles(rc, player);
 
-      const wpn = state.weapon === 'shotgun' ? weaponShotgun : weapon;
-      const weaponSprite = state.weaponFireFrame > 0 ? wpn.fire : wpn.idle;
-      rc.renderWeapon(weaponSprite, state.bob * 0.3, Math.abs(state.bob) * 0.5 + (state.weaponFireFrame > 0 ? 8 : 0));
+      // Weapon overlay & HUD off during cinematic — the polaroid should look
+      // like a clean shot, not a HUD-cluttered gameplay screenshot.
+      if (!cine) {
+        const wpn = state.weapon === 'shotgun' ? weaponShotgun : weapon;
+        const weaponSprite = state.weaponFireFrame > 0 ? wpn.fire : wpn.idle;
+        rc.renderWeapon(weaponSprite, state.bob * 0.3, Math.abs(state.bob) * 0.5 + (state.weaponFireFrame > 0 ? 8 : 0));
+      }
 
       hud.render(state);
+      // Visually fade HUD bar + crosshair during cinematic. (HUD is a separate
+      // canvas not captured into the polaroid; this is purely for cinematic
+      // feel while the player watches the orbit.)
+      hudCanvas.style.opacity = cine ? '0' : '';
+      const crosshairEl = document.getElementById('crosshair');
+      if (crosshairEl) crosshairEl.style.display = cine ? 'none' : '';
 
       // Tint crosshair green when aiming at a friend (hint: click opens shop, not fire)
       const ch = document.getElementById('crosshair');

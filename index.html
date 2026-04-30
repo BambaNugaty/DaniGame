@@ -321,6 +321,7 @@
       </h1>
       <canvas class="danvas" id="title-dani" width="64" height="64"></canvas>
       <button class="start" id="start-btn">PRESS START</button>
+      <button id="photo-book-btn" style="margin-top:10px;font-family:'Press Start 2P',monospace;font-size:clamp(10px,1.2vw,14px);padding:10px 18px;background:transparent;color:#ffd33a;border:2px solid #ffd33a;cursor:pointer;letter-spacing:2px;box-shadow:0 4px 0 rgba(0,0,0,0.5);">PHOTO BOOK</button>
       <div class="controls-help">
         <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp;·&nbsp; <kbd>MOUSE</kbd> look &nbsp;·&nbsp; <kbd>CLICK</kbd> fire</div>
         <div style="margin-top:12px" class="blink">▼ CAVEMEN INVADE THE SUBURBS ▼</div>
@@ -363,9 +364,12 @@
 <script src="sprites.js?v=11"></script>
 <script src="audio.js?v=11"></script>
 <script src="level.js?v=11"></script>
-<script src="raycaster.js?v=11"></script>
+<script src="raycaster.js?v=13"></script>
 <script src="hud.js?v=11"></script>
-<script src="game.js?v=12"></script>
+<script src="systems/Juice.js?v=14"></script>
+<script src="systems/Selfie.js?v=16"></script>
+<script src="ui/PhotoBook.js?v=14"></script>
+<script src="game.js?v=15"></script>
 
 <!-- Tweaks panel (React) -->
 <script type="text/babel" src="tweaks-panel.jsx"></script>

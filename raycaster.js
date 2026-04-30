@@ -16,14 +16,28 @@
       zBuffer: new Float32Array(view.width),
       textures: opts.textures || {},
       texSize: 64,
+      // Additive camera offset applied on top of player position/heading for the
+      // duration of one frame. Used by Juice for screen shake. Reset by the
+      // caller after each frame; raycaster only reads it.
+      cameraOffset: { x: 0, y: 0, dir: 0 },
     };
 
     function setFov(f) { state.fov = f; }
     function setMaxDepth(d) { state.maxDepth = d; }
     function setPixelation(p) { state.pixelation = Math.max(1, p | 0); }
+    function setCameraOffset(ox, oy, odir) {
+      state.cameraOffset.x = ox || 0;
+      state.cameraOffset.y = oy || 0;
+      state.cameraOffset.dir = odir || 0;
+    }
+    function effectivePlayer(p) {
+      const o = state.cameraOffset;
+      return { x: p.x + o.x, y: p.y + o.y, dir: p.dir + o.dir };
+    }
 
     // Renders one frame.
-    function render(player) {
+    function render(rawPlayer) {
+      const player = effectivePlayer(rawPlayer);
       const { W, H, fov, maxDepth, zBuffer, textures, texSize } = state;
       const dirX = Math.cos(player.dir);
       const dirY = Math.sin(player.dir);
@@ -123,7 +137,8 @@
     }
 
     // Render sprites (billboards). `entities` is array of {x,y,canvas,frameW,frame,size}
-    function renderSprites(player, entities) {
+    function renderSprites(rawPlayer, entities) {
+      const player = effectivePlayer(rawPlayer);
       const { W, H, fov, zBuffer } = state;
       const dirX = Math.cos(player.dir);
       const dirY = Math.sin(player.dir);
@@ -199,7 +214,8 @@
       ctx.drawImage(weaponSprite, (W - dw) / 2 + bobX, H - dh + yOffset + bobY, dw, dh);
     }
 
-    function worldToScreen(player, wx, wy) {
+    function worldToScreen(rawPlayer, wx, wy) {
+      const player = effectivePlayer(rawPlayer);
       const { W, H, fov } = state;
       const dirX = Math.cos(player.dir);
       const dirY = Math.sin(player.dir);
@@ -220,7 +236,7 @@
         behind: false,
       };
     }
-    return { render, renderSprites, renderWeapon, worldToScreen, setFov, setMaxDepth, setPixelation, state };
+    return { render, renderSprites, renderWeapon, worldToScreen, setFov, setMaxDepth, setPixelation, setCameraOffset, state, ctx };
   }
 
   window.RAYCASTER = { create };
