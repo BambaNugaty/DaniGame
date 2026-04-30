@@ -46,20 +46,20 @@
       const planeX = -dirY * planeLen;
       const planeY = dirX * planeLen;
 
-      // CEILING & FLOOR — flat colors with vertical gradient (cheap)
-      // Sky (upper): purple-orange Kfar Saba sunset
+      // CEILING & FLOOR — gradient from the active level's palette so each
+      // map reads with its own mood (suburb dusk, mall fluorescent, station
+      // amber, etc). Falls back to suburb if LEVEL hasn't loaded a palette.
+      const palette = (window.LEVEL && window.LEVEL.palette) || null;
+      const skyStops = palette ? palette.sky : [['#1a0a2a', 0], ['#4a1a4a', 0.5], ['#a04a2a', 1]];
+      const floorStops = palette ? palette.floor : [['#3a2a3a', 0], ['#1a1020', 0.4], ['#080510', 1]];
+
       const skyGrad = ctx.createLinearGradient(0, 0, 0, H / 2);
-      skyGrad.addColorStop(0, '#1a0a2a');
-      skyGrad.addColorStop(0.5, '#4a1a4a');
-      skyGrad.addColorStop(1, '#a04a2a');
+      for (const [color, stop] of skyStops) skyGrad.addColorStop(stop, color);
       ctx.fillStyle = skyGrad;
       ctx.fillRect(0, 0, W, H / 2);
 
-      // Floor: dark asphalt with soft horizon glow
       const floorGrad = ctx.createLinearGradient(0, H / 2, 0, H);
-      floorGrad.addColorStop(0, '#3a2a3a');
-      floorGrad.addColorStop(0.4, '#1a1020');
-      floorGrad.addColorStop(1, '#080510');
+      for (const [color, stop] of floorStops) floorGrad.addColorStop(stop, color);
       ctx.fillStyle = floorGrad;
       ctx.fillRect(0, H / 2, W, H / 2);
 
@@ -112,6 +112,9 @@
         else if (tile === 3) tex = textures.brick;
         else if (tile === 4) tex = textures.sign;
         else if (tile === 5) tex = textures.garage;
+        else if (tile === 6) tex = textures.mall_glass;
+        else if (tile === 7) tex = textures.station_tile;
+        else if (tile === 8) tex = textures.mall_storefront;
         else tex = textures.concrete;
 
         let wallX;

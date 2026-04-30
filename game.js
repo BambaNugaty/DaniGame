@@ -428,6 +428,22 @@
     if (window.JUICE) JUICE.init({ playfield, rc });
     if (window.SELFIE) SELFIE.init({ playfield, view, rc, player, state });
 
+    // Hit-flash polish: when an enemy gets shot, find the closest live one to
+    // the impact point and start a brief stretch timer on it. The render
+    // block reads e.hitFlash to apply a size pulse + a small upward kick.
+    if (window.EVENTS) {
+      EVENTS.on('enemy:hit', ({ x, y }) => {
+        let best = null, bestD = 0.6 * 0.6;
+        for (const e of enemies) {
+          if (e.state === 'dead' || e.removed) continue;
+          const dx = e.x - x, dy = e.y - y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < bestD) { bestD = d2; best = e; }
+        }
+        if (best) best.hitFlash = 0.14;
+      });
+    }
+
     state.levelCount = LEVEL.count;
     loadLevel(0, true);
     requestAnimationFrame(loop);
@@ -733,6 +749,9 @@
     const MUTUAL_SQ = E.MUTUAL_RADIUS * E.MUTUAL_RADIUS;
     for (const e of enemies) {
       if (e.removed) continue;
+      // Tick the hit-flash timer regardless of life state so a freshly-killed
+      // enemy still gets its final pulse.
+      if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt);
       if (e.state === 'dead') {
         e.deathTimer += dt;
         if (e.deathTimer > E.DEATH_FADE_DURATION) e.removed = true;
@@ -1392,11 +1411,23 @@
         let frame = e.frame;
         if (e.state === 'dead') frame = 0;
         const fade = e.state === 'dead' ? Math.max(0, 1 - e.deathTimer / 60) : 1;
+        // Polish: idle sway (subtle bob in idle/wander), and a size pulse
+        // when freshly hit so impacts feel weighty.
+        let size = e.state === 'dead' ? 0.55 : 1;
+        let yOffset = e.state === 'dead' ? 0.32 : 0;
+        if (e.state === 'idle' && e.hitFlash <= 0) {
+          // x-anchored phase so a pack of cavemen don't bob in unison.
+          yOffset += Math.sin(performance.now() / 600 + e.x * 1.7) * 0.018;
+        }
+        if (e.hitFlash > 0) {
+          // 0..0.14s → 1..0 progress. Quadratic falloff for a snappier pop.
+          const k = e.hitFlash / 0.14;
+          size *= 1 + k * k * 0.18;
+          yOffset -= k * 0.05;
+        }
         ents.push({
           x: e.x, y: e.y, canvas: sprite, frameW,
-          frame, size: e.state === 'dead' ? 0.55 : 1,
-          yOffset: e.state === 'dead' ? 0.32 : 0,
-          alpha: fade,
+          frame, size, yOffset, alpha: fade,
         });
       }
       if (boss) {
@@ -1437,6 +1468,16 @@
       }
       rc.renderSprites(player, ents);
       if (window.JUICE && !cine) JUICE.drawParticles(rc, player);
+
+      // Per-level ambient tint — paints a faint full-screen color over walls,
+      // sprites, and particles to set each map's mood (cool blue for the mall,
+      // warm amber for the station). Drawn before the weapon so the player's
+      // hands stay readable.
+      const pal = LEVEL.palette;
+      if (pal && pal.ambient && pal.ambient !== 'rgba(0,0,0,0)') {
+        rc.ctx.fillStyle = pal.ambient;
+        rc.ctx.fillRect(0, 0, rc.state.W, rc.state.H);
+      }
 
       // Weapon overlay & HUD off during cinematic — the polaroid should look
       // like a clean shot, not a HUD-cluttered gameplay screenshot.
