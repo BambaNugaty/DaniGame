@@ -206,12 +206,35 @@
     font-size: clamp(14px, 1.8vw, 24px);
     text-align: center;
     text-shadow: 3px 3px 0 #000;
-    pointer-events: none;
+    pointer-events: none; /* clicks fall through to view (request pointer lock); buttons re-enable below */
     z-index: 30;
     display: none;
     line-height: 1.6;
   }
   #pause-msg.show { display: block; }
+  #pause-msg .pause-actions {
+    display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+    margin-top: 18px;
+  }
+  #pause-msg .pause-btn {
+    pointer-events: auto;            /* re-enable clicks just for the buttons */
+    font-family: 'Press Start 2P', monospace;
+    font-size: clamp(10px, 1.2vw, 14px);
+    padding: 10px 16px;
+    cursor: pointer;
+    letter-spacing: 2px;
+    border: 0;
+  }
+  #pause-msg .pause-btn.primary {
+    background: #ffd33a; color: #1a0a2a;
+    box-shadow: 0 4px 0 #a86a08;
+  }
+  #pause-msg .pause-btn.secondary {
+    background: transparent; color: #ff5a8a;
+    border: 2px solid #ff5a8a;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.5);
+  }
+  #pause-msg .pause-btn:hover { filter: brightness(1.15); }
 
   /* volume toast */
   #volume-toast {
@@ -308,7 +331,14 @@
     <div class="crosshair" id="crosshair"></div>
     <div id="muzzle"></div>
     <div id="damage-flash"></div>
-    <div id="pause-msg">CLICK TO LOCK MOUSE<br/><span style="font-size:0.7em;opacity:0.7">WASD move · MOUSE aim · CLICK fire · B shop · ESC pause · +/− volume · M mute</span></div>
+    <div id="pause-msg">
+      PAUSED — CLICK TO RESUME
+      <br/><span style="font-size:0.7em;opacity:0.7">WASD move · MOUSE aim · CLICK fire · B shop · ESC pause · +/− volume · M mute</span>
+      <div class="pause-actions">
+        <button class="pause-btn primary" id="resume-btn">RESUME</button>
+        <button class="pause-btn secondary" id="quit-btn">QUIT TO LOBBY</button>
+      </div>
+    </div>
     <div id="volume-toast"><span class="label">VOL</span><div class="bars"></div></div>
 
     <div id="title">
@@ -359,17 +389,17 @@
     box.textContent += `[error] ${e.message} @ ${e.filename}:${e.lineno}:${e.colno}\n`;
   });
 </script>
-<script src="config/Constants.js?v=12"></script>
+<script src="config/Constants.js?v=16"></script>
 <script src="core/EventBus.js?v=12"></script>
 <script src="sprites.js?v=11"></script>
 <script src="audio.js?v=11"></script>
-<script src="level.js?v=11"></script>
+<script src="level.js?v=17"></script>
 <script src="raycaster.js?v=13"></script>
 <script src="hud.js?v=11"></script>
 <script src="systems/Juice.js?v=14"></script>
 <script src="systems/Selfie.js?v=16"></script>
 <script src="ui/PhotoBook.js?v=14"></script>
-<script src="game.js?v=15"></script>
+<script src="game.js?v=17"></script>
 
 <!-- Tweaks panel (React) -->
 <script type="text/babel" src="tweaks-panel.jsx"></script>
